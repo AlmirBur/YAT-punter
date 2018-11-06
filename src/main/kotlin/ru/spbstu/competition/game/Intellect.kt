@@ -71,24 +71,24 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         throw IllegalArgumentException("impossible to connect")//
     }
 
-    private fun try0() {
+    private fun try0(): River {
         for (mine in graph.allMines) {
             val neighbor = graph.getNeighbors(mine).keys.find { key -> graph.getNeighbors(mine)[key] == VertexState.Neutral }
             if (neighbor != null) {
-                return protocol.claimMove(mine, neighbor)
+                return River(mine, neighbor)
             }
         }
         gameStage = 1
         throw IllegalArgumentException()
     }
 
-    private fun try1() {
+    private fun try1(): River {
         var i = 0
         while (connectibleMinesMoreThen1) {
             println(i++)
             try {
                 val result = findWayToMine(currentMineId, nextMineId)
-                return protocol.claimMove(result.source, result.target)
+                return River(result.source, result.target)
             } catch (e: IllegalArgumentException) {
                 e.printStackTrace()
                 println("$currentMineId   $nextMineId")
@@ -112,22 +112,22 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         throw IllegalArgumentException()
     }
 
-    private fun try2() {
+    private fun try2(): River {
         for (ourSite in graph.ourSites) {
             val neighbor = graph.getNeighbors(ourSite).keys.find { key -> graph.getNeighbors(ourSite)[key] == VertexState.Neutral }
             if (neighbor != null) {
-                return protocol.claimMove(ourSite, neighbor)
+                return River(ourSite, neighbor)
             }
         }
         gameStage = 3
         throw IllegalArgumentException()
     }
 
-    private fun try3() {
+    private fun try3(): River {
         for (site in graph.allSites) {
             val neighbor = graph.getNeighbors(site).keys.find { key -> graph.getNeighbors(site)[key] == VertexState.Neutral }
             if (neighbor != null) {
-                return protocol.claimMove(site, neighbor)
+                return River(site, neighbor)
             }
         }
         gameStage = 4
@@ -136,28 +136,14 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
 
     fun makeMove() {
         try {
-            when (gameStage) {
-                0 -> {
-                    try0()
-                    println("try0")
-                }
-                1 -> {
-                    try1()
-                    println("try1")
-                }
-                2 -> {
-                    try2()
-                    println("try2")
-                }
-                3 -> {
-                    try3()
-                    println("try3")
-                }
-                else -> {
-                    println("pass")
-                    protocol.passMove()
-                }
+            val result = when (gameStage) {
+                0 -> try0()
+                1 -> try1()
+                2 -> try2()
+                3 -> try3()
+                else -> return protocol.passMove()
             }
+            protocol.claimMove(result.source, result.target)
         } catch (e: IllegalArgumentException) {
             makeMove()
         }
