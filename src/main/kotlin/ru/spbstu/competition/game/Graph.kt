@@ -10,11 +10,12 @@ class Graph {
     private class Vertex {
         val neighbors = mutableMapOf<Int, VertexState>()
         val shortestWays = mutableMapOf<Int, Int>()
+        var averageWeight = 0.0
     }
 
     private class Mine(id: Int) {
         var sites = mutableSetOf(id)
-        val cantBeConnected = mutableSetOf<Int>()
+        val incompatibleSets = mutableSetOf<Int>()
     }
 
     fun init(setup: Setup) {
@@ -22,7 +23,6 @@ class Graph {
 
         for ((id) in setup.map.sites) {
             addVertex(id)
-            allSites.add(id)
         }
         for (river in setup.map.rivers) {
             connect(river.source, river.target)
@@ -31,8 +31,7 @@ class Graph {
         }
         for (mineId in setup.map.mines) {
             addMine(mineId)
-            findWeightsSites(mineId)
-            allMines.add(mineId)
+            findSitesWeights(mineId)
         }
     }
 
@@ -40,18 +39,24 @@ class Graph {
     private val vertices = mutableMapOf<Int, Vertex>()
     private val mines = mutableMapOf<Int, Mine>()
     val ourSites = mutableSetOf<Int>()
-    val allSites = mutableSetOf<Int>()
     val allRivers = mutableSetOf<River>()
-    val allMines = mutableSetOf<Int>()
+
+    fun getAllMines() = mines.keys
+    fun getAllSites() = vertices.keys
 
     fun getNeighbors(id: Int) = vertices[id]!!.neighbors
     fun getShortestWays(id: Int) = vertices[id]!!.shortestWays
-    fun getCites(mine: Int) = mines[mine]!!.sites
+    fun getSites(mine: Int) = mines[mine]!!.sites
 
-    fun cantBeConnected(id: Int): MutableSet<Int> = mines[id]!!.cantBeConnected
+    fun getIncompatibleSets(id: Int): MutableSet<Int> = mines[id]!!.incompatibleSets
 
-    fun setCantBeConnected(mine: Int, cite: Int) {
-        cantBeConnected(mine).add(cite)
+    fun setIncompatibleSets(id: Int, setId: Int) {
+        getIncompatibleSets(id).add(setId)
+    }
+
+    fun getAverageWeight(id: Int) = vertices[id]!!.averageWeight
+    fun setAverageWeight(id: Int, value: Double) {
+        vertices[id]!!.averageWeight = value
     }
 
     fun addVertex(id: Int) {
@@ -100,15 +105,11 @@ class Graph {
         //if (minesContainsFirst.isEmpty() && minesContainsSecond.isEmpty()) throw IllegalArgumentException("both sites not added")
         if (minesContainsFirst.isEmpty() && minesContainsSecond.isEmpty()) return
         if (minesContainsFirst.isEmpty()) {
-            for (mineId in minesContainsSecond) {
-                mines[mineId]!!.sites.add(first)
-            }
+            mines[minesContainsSecond[0]]!!.sites.add(first)
             return
         }
         if (minesContainsSecond.isEmpty()) {
-            for (mineId in minesContainsFirst) {
-                mines[mineId]!!.sites.add(second)
-            }
+            mines[minesContainsFirst[0]]!!.sites.add(second)
             return
         }
         //both are not empty
@@ -124,7 +125,21 @@ class Graph {
         }
     }
 
-    fun findWeightsSites(mine: Int) {
+    fun setAverageWeights(setId: Int) {
+        val setNeighbors = mutableSetOf<Int>()
+        for (site in getSites(setId)) {
+            setNeighbors.addAll(getNeighbors(site).keys
+                    .filter { key -> getNeighbors(site)[key] == VertexState.Neutral && !ourSites.contains(key) })
+        }
+        val setMines = getAllMines().filter { getSites(it) === getSites(setId) }.toSet()
+        for (site in setNeighbors) {
+            setAverageWeight(site, setMines.sumBy { getShortestWays(site)[it]!! }.toDouble() / setMines.size)
+        }
+        getAllSites().forEach { site ->
+            setAverageWeight(site, setMines.sumBy { getShortestWays(site)[it]!! }.toDouble() / setMines.size) }
+    }
+
+    fun findSitesWeights(mine: Int) {
         val queue = mutableListOf<Int>()
         queue.add(mine)
         vertices[mine]!!.shortestWays.put(mine, 0)
