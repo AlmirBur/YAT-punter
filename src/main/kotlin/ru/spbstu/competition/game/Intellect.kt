@@ -7,27 +7,33 @@ import ru.spbstu.competition.protocol.data.River
 class Intellect(val graph: Graph, val protocol: Protocol) {
 
     var gameStage = 0
-    var currentMineId = -1
-    var nextMineId = -1
+    var currentSetOfMines = -1
+    var nextSetOfMines = -1
 
     fun init() {
-        if (graph.getAllMines().size < 2) {//особый режим игры???
+        if (graph.getAllMines().size < 2) {//особый режим игры?
             return
         }
     }
 
-    private fun getNextRiver(first: Int, second: Int): River {//second is always "mine"
-        if (!graph.getAllSites().contains(first) || !graph.getAllSites().contains(second)) throw IllegalArgumentException("site(s) doesn't exist")
-        if (graph.getSites(second)!!.contains(first)) throw IllegalArgumentException("already connected")
+    //Сейчас идёт от какой-то mine первого множества до второго множества
+    //В идеале нужно, чтобы соединялись коротчайшим путём
+    //так ли хорош поиск в ширину?
+    private fun getNextRiver(firstSet: Int, secondSet: Int): River {
+        if (!graph.getAllSetsOfMines().contains(firstSet) || !graph.getAllSetsOfMines().contains(secondSet))
+            throw IllegalArgumentException("set(s) doesn't exist")
+        if (firstSet == secondSet) throw IllegalArgumentException("it is one set")
         val queue = mutableListOf<Int>()
-        queue.add(first)
-        val visited = mutableSetOf(first)
+        //val from = graph.getSitesBySetId(first).elementAt(ANY)
+        val from = graph.getMinesBySetId(firstSet).elementAt(0)
+        queue.add(from)
+        val visited = mutableSetOf(from)
         while (queue.isNotEmpty()) {
             val current = queue[0]
             queue.removeAt(0)
-            for ((id, vertexState) in graph.getNeighbors(current)) {
-                if (vertexState == VertexState.Enemy || id in visited) continue
-                if (graph.getSites(second).contains(id)) {
+            for ((id, siteState) in graph.getNeighbors(current)) {
+                if (siteState == SiteState.Enemy || id in visited) continue
+                if (graph.getSitesBySetId(secondSet).contains(id)) {
                     return River(current, id)
                 }
                 queue.add(id)
@@ -37,15 +43,14 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         throw IllegalArgumentException("impossible to connect")
     }
 
-    private fun updateCurrentAndNextMines() {
-        findMines@for (i in 0..graph.getAllMines().size - 2) {
-            for (j in i + 1 until graph.getAllMines().size) {
-                if (graph.getSites(graph.getAllMines().elementAt(i))
-                        !== graph.getSites(graph.getAllMines().elementAt(j))
-                        && !graph.getIncompatibleSets(graph.getAllMines().elementAt(i))
-                        .contains(graph.getAllMines().elementAt(j))) {
-                    currentMineId = graph.getAllMines().elementAt(i)
-                    nextMineId = graph.getAllMines().elementAt(j)
+    //Улучьшить выбор множеств
+    private fun updateCurrentAndNextSetsOfMines() {
+        for (i in 0..graph.getAllSetsOfMines().size - 2) {
+            for (j in i + 1 until graph.getAllSetsOfMines().size) {
+                if (!graph.getIncompatibleSets(graph.getAllSetsOfMines().elementAt(i))
+                        .contains(graph.getAllSetsOfMines().elementAt(j))) {
+                    currentSetOfMines = graph.getAllSetsOfMines().elementAt(i)
+                    nextSetOfMines = graph.getAllSetsOfMines().elementAt(j)
                     return
                 }
             }
@@ -53,14 +58,26 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         throw IllegalArgumentException()
     }
 
+    //Улучшить выбор mine и конкретной реки
+    //Быть может не следует занимать все реки mines
     private fun try0(): River {
         var min = Int.MAX_VALUE
         var source = -1
         for (mineId in graph.getAllMines()) {
-            val neutral = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == VertexState.Neutral }
+            val neutral = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == SiteState.Neutral }
             if (neutral == 0) continue
-            val our = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == VertexState.Our }
-            val enemy = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == VertexState.Enemy }
+            val our = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == SiteState.Our }
+            val enemy = graph.getNeighbors(mineId).keys.count { key -> graph.getNeighbors(mineId)[key] == SiteState.Enemy }
+            if (neutral == 1) {
+                if (our == 0) {
+                    source = mineId
+                    break
+                }
+                if (enemy == 0) {
+                    source = mineId
+                    break
+                }
+            }
             val sum = neutral + enemy + 2 * our
             if (sum < min) {
                 source = mineId
@@ -68,17 +85,13 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
             }
         }
         if (source == -1) {//нетральных соседей нет ни у одной mine
-            if (graph.getAllMines().size > 1) {
-                updateCurrentAndNextMines()
-            } else {
-                //
-            }
+            updateCurrentAndNextSetsOfMines()
             throw IllegalArgumentException()
         }
-        //val target = graph.getNeighbors(source).keys.find { key -> graph.getNeighbors(source)[key] == VertexState.Neutral }!!
+        //val target = graph.getNeighbors(source).keys.find { key -> graph.getNeighbors(source)[key] == SiteState.Neutral }!!
         var target = -1
         for ((key, _) in graph.getNeighbors(source)) {
-            if (graph.getNeighbors(source)[key] == VertexState.Neutral) {
+            if (graph.getNeighbors(source)[key] == SiteState.Neutral) {
                 target = key
                 if (graph.getAllMines().contains(key)) break
             }
@@ -86,44 +99,43 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         return River (source, target)
     }
 
+    //try 0.5: отойти от mines на более безопасное расстояние
+    //try 0.75: занять мосты
+    //try1: занимать реки наперёд, в тех местах, где меньше разветвлений
+    //На протяжении всего try1, если нас пытаются заблочить, поддерживать свою свободу
     private fun try1(): River {
+        if (graph.getAllSetsOfMines().size < 2) throw IllegalArgumentException()//or (... == 1)
         while (true) {
             try {
-                val result = getNextRiver(currentMineId, nextMineId)
-                val temp = currentMineId
-                currentMineId = nextMineId
-                nextMineId = temp
+                val result = getNextRiver(currentSetOfMines, nextSetOfMines)
+                val temp = currentSetOfMines
+                currentSetOfMines = nextSetOfMines
+                nextSetOfMines = temp
                 return result
             } catch (e: IllegalArgumentException) {
                 e.printStackTrace()
-                graph.getAllMines()
-                        .filter { graph.getSites(it) === graph.getSites(currentMineId) }
-                        .forEach { mineId ->
-                            graph.getAllMines()
-                                    .filter { graph.getSites(it) === graph.getSites(nextMineId) }
-                                    .forEach {
-                                        graph.setIncompatibleSets(mineId, it)
-                                        graph.setIncompatibleSets(it, mineId)
-                                    }
-                        }
-                updateCurrentAndNextMines()
+                if (graph.getAllSetsOfMines().contains(currentSetOfMines) && graph.getAllSetsOfMines().contains(nextSetOfMines))
+                    graph.setIncompatibleSets(currentSetOfMines, nextSetOfMines)
+                updateCurrentAndNextSetsOfMines()
             }
         }
     }
 
+    //try 1.5: реализовать пересчёт множеств
+    //Каждому множеству присвоить область sites с весами
+    //try2 пускать щупальца в стороны (к site с большим весом )
+    //Закрывать доступ к site с большим весом?
     private fun try2(): River {
-        val setNeighbors = mutableSetOf<Int>()
+        val setOfNeighbors = mutableSetOf<Int>()
         for (ourSite in graph.ourSites) {
-            setNeighbors.addAll(graph.getNeighbors(ourSite).keys
-                    .filter { key -> graph.getNeighbors(ourSite)[key] == VertexState.Neutral && !graph.ourSites.contains(key)})
+            setOfNeighbors.addAll(graph.getNeighbors(ourSite).keys
+                    .filter { key -> graph.getNeighbors(ourSite)[key] == SiteState.Neutral && !graph.ourSites.contains(key)})
         }
-        if (setNeighbors.isEmpty()) throw IllegalArgumentException()
-        for (mine in graph.getAllMines()) {//не оптимально
-            graph.setWeights(mine)
-        }
+        if (setOfNeighbors.isEmpty()) throw IllegalArgumentException()
+        graph.getAllSetsOfMines().forEach { setOfMines -> graph.setWeights(setOfMines) }
         var max = -1L
         var target = -1
-        for (neighbor in setNeighbors) {
+        for (neighbor in setOfNeighbors) {
             if (graph.getWeight(neighbor) > max) {
                 max = graph.getWeight(neighbor)
                 target = neighbor
@@ -131,13 +143,14 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         }
         //if (target == -1) throw Exception()
         val source = graph.getNeighbors(target).keys
-                .find { key -> graph.ourSites.contains(key) && graph.getNeighbors(target)[key] == VertexState.Neutral }!!
+                .find { key -> graph.ourSites.contains(key) && graph.getNeighbors(target)[key] == SiteState.Neutral }!!
         return River(source, target)
     }
 
+    //Закрывать доступ к site с большим весом?
     private fun try3(): River {
         for (site in graph.getAllSites()) {
-            val neighbor = graph.getNeighbors(site).keys.find { key -> graph.getNeighbors(site)[key] == VertexState.Neutral }
+            val neighbor = graph.getNeighbors(site).keys.find { key -> graph.getNeighbors(site)[key] == SiteState.Neutral }
             if (neighbor != null) {
                 return River(site, neighbor)
             }

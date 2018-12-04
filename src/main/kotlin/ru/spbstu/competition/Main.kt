@@ -19,26 +19,19 @@ object Arguments {
 }
 
 fun main(args: Array<String>) {
-    //val args1: Array<String> = arrayOf("-u", "kotoed.icc.spbstu.ru", "-p", "50005")
-    //Arguments.use(args1)
-    Arguments.use(args)
-
+    val args1: Array<String> = arrayOf("-u", "kotoed.icc.spbstu.ru", "-p", "50004")
+    Arguments.use(args1)
+    //Arguments.use(args)
     println("Hi, I am YAT")
-
     val protocol = Protocol(Arguments.url, Arguments.port)
     val graph = Graph()
     val intellect = Intellect(graph, protocol)
-
-    protocol.handShake("YAT")
-
+    protocol.handShake("Joe")
     val setupData = protocol.setup()
     graph.init(setupData)
     intellect.init()
-
     println("Received id = ${setupData.punter}")
-
     protocol.ready()
-
     gameloop@ while(true) {
         val message = protocol.serverMessage()
         when(message) {
