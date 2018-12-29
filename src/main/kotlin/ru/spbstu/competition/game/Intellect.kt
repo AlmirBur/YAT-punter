@@ -260,14 +260,26 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
         throw IllegalArgumentException()
     }
 
-    private fun getBlockEnemyRiver(punter: Int): River {
+    private fun getBlockEnemyRiver(punter: Int, level: Int): River {
         val ways = getEnemyWays(punter)
+        val sets = getEnemySets(punter)
         ways.values.forEach { way ->
             way.forEach { river ->
-                val firstPartOfGraph = graph.getPartOfGraph(punter, river.source)
-                val secondPartOfGraph = graph.getPartOfGraph(punter, river.target)
-                if (firstPartOfGraph.size != 1 && secondPartOfGraph.size != 1 && firstPartOfGraph != secondPartOfGraph)
-                    return river
+                var setContainsFirst = -1
+                var setContainsSecond = -1
+                for ((mine, setOfMines) in sets) {
+                    if (setOfMines.contains(river.source)) setContainsFirst = mine
+                    if (setOfMines.contains(river.target)) setContainsSecond = mine
+                }
+                when (level) {
+                    0 -> {
+                        if (setContainsFirst != -1 && setContainsSecond != -1
+                                && setContainsFirst != setContainsSecond) return river
+                    }
+                    1 -> {
+                        if ((setContainsFirst != -1 || setContainsSecond != -1)) return river
+                    }
+                }
             }
         }
         throw IllegalArgumentException()
@@ -349,21 +361,32 @@ class Intellect(val graph: Graph, val protocol: Protocol) {
                 } catch (e: IllegalArgumentException) {}
                 if (graph.punters > 1) try {//противник(и) есть! захват глобальных мостов противника
                     return getGlobalBridge(currentEnemy)
-                } catch (e: IllegalArgumentException) {} finally { updateCurrentEnemy() }
+                } catch (e: IllegalArgumentException) {
+                } finally { updateCurrentEnemy() }
                 if (graph.punters == 2) {
+                    try {//дуэль! блокируем два множества противник
+                        return getBlockEnemyRiver(currentEnemy, 0)
+                    } catch (e: IllegalArgumentException) {}
                     try {//дуэль! захват наиболее часто встречающихся рек противника
                         return getGlobalRiver(currentEnemy)
                     } catch (e: IllegalArgumentException) {}
                     try {//дуэль! блокируем два множества противника
-                        return getBlockEnemyRiver(currentEnemy)
+                        return getBlockEnemyRiver(currentEnemy, 1)
                     } catch (e: IllegalArgumentException) {}
                 }
                 try {
                     return getGlobalRiver(graph.myId)//захват наиболее часто встречающихся рек
                 } catch (e: IllegalArgumentException) {}
-                if (graph.punters > 2) try {//дуэль! захват наиболее часто встречающихся рек противника
-                    return getGlobalRiver(currentEnemy)
-                } catch (e: IllegalArgumentException) {} finally { updateCurrentEnemy() }
+                if (graph.punters > 2) {
+                    try {//блокируем два множества противник
+                        return getBlockEnemyRiver(currentEnemy, 0)
+                    } catch (e: IllegalArgumentException) {
+                    } finally { updateCurrentEnemy() }
+                    try {//захват наиболее часто встречающихся рек противника
+                        return getGlobalRiver(currentEnemy)
+                    } catch (e: IllegalArgumentException) {
+                    } finally { updateCurrentEnemy() }
+                }
                 val way = getWayForTry1(currentSetOfMines, nextSetOfMines)
                 val temp = currentSetOfMines
                 currentSetOfMines = nextSetOfMines

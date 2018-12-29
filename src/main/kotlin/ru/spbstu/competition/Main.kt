@@ -18,6 +18,8 @@ object Arguments {
             CmdLineParser(this).parseArgument(*args).let{ this }
 }
 
+var moveN = 0
+
 fun main(args: Array<String>) {
     Arguments.use(args)
     println("Hi, I am YAT")
@@ -52,7 +54,9 @@ fun main(args: Array<String>) {
                             graph.update(move.claim)
                         }
                     }
+                    moveN++
                 }
+                println(moveN)
             }
         }
         println("YAT thin'")
